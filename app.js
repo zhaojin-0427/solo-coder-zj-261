@@ -19,6 +19,8 @@
 
   const BLADE_WIDTH = 40;
   const STORAGE_KEY = 'woodPlanerPresets';
+  const WOOD_LIB_KEY = 'woodPlanerWoodLibrary';
+  const COMPARE_STATE_KEY = 'woodPlanerCompareState';
 
   const REFERENCE_TABLE = [
     { wood: '松木 / 杉木 / 杨木', hardness: 'soft',   flat: '25°–28°', pressure: '28°–30°', groove: '30°–33°', edge: '20°–23°', bird: '22°–25°' },
@@ -38,7 +40,11 @@
     cutDepth: 0.8,
     woodHardness: 'soft',
     reverseMode: false,
-    targetRa: 3.2
+    targetRa: 3.2,
+    compareOpen: false,
+    compareSelA: 'current',
+    compareSelB: 'current',
+    currentWoodName: ''
   };
 
   // ==================== COMPUTATION ====================
@@ -261,6 +267,7 @@
     setSliderFill(angleSlider);
 
     if (state.reverseMode) updateReverse();
+    if (state.compareOpen) renderCompare();
   }
 
   function lighten(hex) {
@@ -392,6 +399,7 @@
     const list = loadPresets();
     if (list.length === 0) {
       scroll.innerHTML = `<p class="preset-empty">暂无预设，点击右上角保存当前刨削参数。</p>`;
+      refreshCompareSelects();
       return;
     }
 
@@ -426,6 +434,8 @@
         deletePreset(btn.dataset.id);
       });
     });
+
+    refreshCompareSelects();
   }
 
   function escapeHtml(s) {
@@ -440,6 +450,7 @@
     state.bladeAngle = p.bladeAngle;
     state.cutDepth = p.cutDepth;
     state.woodHardness = p.woodHardness;
+    state.currentWoodName = p.woodName || '';
 
     document.querySelectorAll('.planer-tab').forEach(t => {
       t.classList.toggle('active', t.dataset.type === p.planerType);
@@ -457,6 +468,7 @@
     });
 
     updateUI();
+    if (state.compareOpen) renderCompare();
     const card = document.querySelector(`.preset-card[data-id="${id}"]`);
     if (card) {
       card.classList.add('flash');
@@ -468,7 +480,10 @@
     if (!confirm('确认删除此预设？')) return;
     const list = loadPresets().filter(x => x.id !== id);
     savePresets(list);
+    if (state.compareSelA === `preset:${id}`) { state.compareSelA = 'current'; }
+    if (state.compareSelB === `preset:${id}`) { state.compareSelB = 'current'; }
     renderPresets();
+    if (state.compareOpen) renderCompare();
   }
 
   function initPresetModal() {
@@ -496,6 +511,7 @@
     btnConfirm.addEventListener('click', () => {
       const name = nameInp.value.trim();
       if (!name) { alert('请填写预设名称'); nameInp.focus(); return; }
+      const wName = woodInp.value.trim();
       const preset = {
         id: uid(),
         name,
@@ -503,46 +519,498 @@
         bladeAngle: state.bladeAngle,
         cutDepth: state.cutDepth,
         woodHardness: state.woodHardness,
-        woodName: woodInp.value.trim(),
+        woodName: wName,
         note: noteInp.value.trim(),
         createdAt: Date.now()
       };
       const list = loadPresets();
       list.unshift(preset);
       savePresets(list);
+      if (wName) state.currentWoodName = wName;
       renderPresets();
+      if (state.compareOpen) renderCompare();
       closeModal();
     });
+  }
+
+  // ==================== WOOD LIBRARY (localStorage) ====================
+  function loadWoodLibrary() {
+    try {
+      return JSON.parse(localStorage.getItem(WOOD_LIB_KEY)) || [];
+    } catch { return []; }
+  }
+
+  function saveWoodLibrary(list) {
+    localStorage.setItem(WOOD_LIB_KEY, JSON.stringify(list));
+  }
+
+  function renderWoodLibrary() {
+    const scroll = document.getElementById('wood-lib-scroll');
+    const list = loadWoodLibrary();
+    if (list.length === 0) {
+      scroll.innerHTML = `<p class="preset-empty">暂无木材档案，点击右上角新增。</p>`;
+      refreshCompareSelects();
+      return;
+    }
+
+    const html = list.map(w => {
+      const hd = WOOD_HARDNESS[w.hardness];
+      const planer = PLANER_TYPES[w.planerType];
+      return `
+        <div class="wood-card" data-id="${w.id}">
+          <div class="wood-card-head">
+            <div class="wood-card-name">${escapeHtml(w.name)}</div>
+            <span class="wood-card-badge ${w.hardness}">${hd ? hd.label : ''}</span>
+          </div>
+          <div class="wood-card-meta">
+            <span>刨刀<strong>${planer ? planer.name : ''}</strong></span>
+            <span>角度<strong>${w.angleMin}°–${w.angleMax}°</strong></span>
+            <span>深度<strong>${w.depth}mm</strong></span>
+            <span>硬度<strong>${hd ? hd.name : ''}</strong></span>
+          </div>
+          ${w.note ? `<div class="wood-card-note">${escapeHtml(w.note)}</div>` : ''}
+          <div class="wood-card-actions">
+            <button class="wood-btn" data-action="apply" data-id="${w.id}">带入参数</button>
+            <button class="wood-btn wood-btn-compare" data-action="compareA" data-id="${w.id}">对比A</button>
+            <button class="wood-btn wood-btn-compare" data-action="compareB" data-id="${w.id}">对比B</button>
+            <button class="wood-btn wood-btn-edit" data-action="edit" data-id="${w.id}">编辑</button>
+            <button class="wood-btn wood-btn-del" data-action="del" data-id="${w.id}">删除</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+    scroll.innerHTML = html;
+
+    scroll.querySelectorAll('.wood-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        const id = btn.dataset.id;
+        const action = btn.dataset.action;
+        if (action === 'apply') applyWoodToCurrent(id);
+        else if (action === 'compareA') setCompareSelection('a', `wood:${id}`);
+        else if (action === 'compareB') setCompareSelection('b', `wood:${id}`);
+        else if (action === 'edit') window.openWoodModal(id);
+        else if (action === 'del') deleteWood(id);
+      });
+    });
+
+    refreshCompareSelects();
+  }
+
+  function applyWoodToCurrent(id) {
+    const list = loadWoodLibrary();
+    const w = list.find(x => x.id === id);
+    if (!w) return;
+
+    state.planerType = w.planerType;
+    state.bladeAngle = clamp((Number(w.angleMin) + Number(w.angleMax)) / 2,
+      PLANER_TYPES[w.planerType].min, PLANER_TYPES[w.planerType].max);
+    state.cutDepth = Number(w.depth);
+    state.woodHardness = w.hardness;
+    state.currentWoodName = w.name;
+
+    document.querySelectorAll('.planer-tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.type === w.planerType);
+    });
+    const info = PLANER_TYPES[w.planerType];
+    document.getElementById('planer-desc').textContent = info.desc;
+    document.getElementById('angle-range-tag').textContent = `${info.min}° – ${info.max}°`;
+
+    document.getElementById('angle-slider').value = state.bladeAngle;
+    document.getElementById('depth-slider').value = state.cutDepth;
+    document.getElementById('depth-input').value = state.cutDepth;
+
+    document.querySelectorAll('.seg-btn').forEach(s => {
+      s.classList.toggle('active', s.dataset.hardness === w.hardness);
+    });
+
+    updateUI();
+    if (state.compareOpen) renderCompare();
+
+    const card = document.querySelector(`.wood-card[data-id="${id}"]`);
+    if (card) {
+      card.classList.add('flash');
+      setTimeout(() => card.classList.remove('flash'), 600);
+    }
+  }
+
+  function deleteWood(id) {
+    if (!confirm('确认删除此木材档案？删除不影响已保存的预设。')) return;
+    const list = loadWoodLibrary().filter(x => x.id !== id);
+    saveWoodLibrary(list);
+    if (state.compareSelA === `wood:${id}`) { state.compareSelA = 'current'; }
+    if (state.compareSelB === `wood:${id}`) { state.compareSelB = 'current'; }
+    renderWoodLibrary();
+    if (state.compareOpen) renderCompare();
+  }
+
+  // ==================== WOOD MODAL ====================
+  function initWoodModal() {
+    const overlay = document.getElementById('wood-modal-overlay');
+    const btnAdd = document.getElementById('btn-add-wood');
+    const btnCancel = document.getElementById('wood-modal-cancel');
+    const btnConfirm = document.getElementById('wood-modal-confirm');
+
+    function openModalForNew() {
+      document.getElementById('wood-modal-title').textContent = '新增木材档案';
+      document.getElementById('wood-edit-id').value = '';
+      document.getElementById('wood-name').value = '';
+      document.getElementById('wood-hardness').value = 'soft';
+      document.getElementById('wood-planer').value = 'flat';
+      document.getElementById('wood-angle-min').value = 25;
+      document.getElementById('wood-angle-max').value = 35;
+      document.getElementById('wood-depth').value = 0.8;
+      document.getElementById('wood-note').value = '';
+      overlay.style.display = 'flex';
+      setTimeout(() => document.getElementById('wood-name').focus(), 50);
+    }
+
+    function openModalForEdit(id) {
+      const list = loadWoodLibrary();
+      const w = list.find(x => x.id === id);
+      if (!w) return;
+      document.getElementById('wood-modal-title').textContent = '编辑木材档案';
+      document.getElementById('wood-edit-id').value = id;
+      document.getElementById('wood-name').value = w.name;
+      document.getElementById('wood-hardness').value = w.hardness;
+      document.getElementById('wood-planer').value = w.planerType;
+      document.getElementById('wood-angle-min').value = w.angleMin;
+      document.getElementById('wood-angle-max').value = w.angleMax;
+      document.getElementById('wood-depth').value = w.depth;
+      document.getElementById('wood-note').value = w.note || '';
+      overlay.style.display = 'flex';
+    }
+    function openWoodModal(id) { id ? openModalForEdit(id) : openModalForNew(); }
+    window.openWoodModal = openWoodModal;
+
+    function closeModal() { overlay.style.display = 'none'; }
+
+    btnAdd.addEventListener('click', openModalForNew);
+    btnCancel.addEventListener('click', closeModal);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+
+    btnConfirm.addEventListener('click', () => {
+      const name = document.getElementById('wood-name').value.trim();
+      if (!name) { alert('请填写木材名称'); document.getElementById('wood-name').focus(); return; }
+
+      const editId = document.getElementById('wood-edit-id').value;
+      const angleMin = Number(document.getElementById('wood-angle-min').value) || 25;
+      const angleMax = Number(document.getElementById('wood-angle-max').value) || 35;
+      const lo = Math.min(angleMin, angleMax);
+      const hi = Math.max(angleMin, angleMax);
+
+      const record = {
+        id: editId || uid(),
+        name,
+        hardness: document.getElementById('wood-hardness').value,
+        planerType: document.getElementById('wood-planer').value,
+        angleMin: lo,
+        angleMax: hi,
+        depth: Number(document.getElementById('wood-depth').value) || 0.8,
+        note: document.getElementById('wood-note').value.trim(),
+        updatedAt: Date.now()
+      };
+      if (!editId) record.createdAt = Date.now();
+
+      const list = loadWoodLibrary();
+      if (editId) {
+        const idx = list.findIndex(x => x.id === editId);
+        if (idx >= 0) list[idx] = { ...list[idx], ...record };
+      } else {
+        list.unshift(record);
+      }
+      saveWoodLibrary(list);
+      renderWoodLibrary();
+      if (state.compareOpen) renderCompare();
+      closeModal();
+    });
+  }
+
+  // ==================== COMPARE PANEL ====================
+  function initCompareToggle() {
+    const panel = document.getElementById('panel-compare');
+    const btnToggle = document.getElementById('btn-compare-toggle');
+    const btnClose = document.getElementById('btn-compare-close');
+    const selA = document.getElementById('compare-select-a');
+    const selB = document.getElementById('compare-select-b');
+
+    function openPanel() {
+      state.compareOpen = true;
+      panel.style.display = 'block';
+      panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      renderCompare();
+    }
+    function closePanel() {
+      state.compareOpen = false;
+      panel.style.display = 'none';
+    }
+    btnToggle.addEventListener('click', () => state.compareOpen ? closePanel() : openPanel());
+    btnClose.addEventListener('click', closePanel);
+
+    selA.addEventListener('change', () => {
+      state.compareSelA = selA.value;
+      renderCompare();
+    });
+    selB.addEventListener('change', () => {
+      state.compareSelB = selB.value;
+      renderCompare();
+    });
+  }
+
+  function setCompareSelection(side, value) {
+    if (side === 'a') {
+      state.compareSelA = value;
+      document.getElementById('compare-select-a').value = value;
+    } else {
+      state.compareSelB = value;
+      document.getElementById('compare-select-b').value = value;
+    }
+    if (!state.compareOpen) {
+      state.compareOpen = true;
+      document.getElementById('panel-compare').style.display = 'block';
+    }
+    renderCompare();
+    document.getElementById('panel-compare').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function refreshCompareSelects() {
+    const woodList = loadWoodLibrary();
+    const presetList = loadPresets();
+    const buildOptions = (currentVal) => {
+      let html = `<option value="current">—— 当前参数 ——</option>`;
+      if (woodList.length > 0) {
+        html += `<optgroup label="木材档案库">`;
+        woodList.forEach(w => {
+          html += `<option value="wood:${w.id}">🪵 ${escapeHtml(w.name)}</option>`;
+        });
+        html += `</optgroup>`;
+      }
+      if (presetList.length > 0) {
+        html += `<optgroup label="已保存预设">`;
+        presetList.forEach(p => {
+          html += `<option value="preset:${p.id}">📋 ${escapeHtml(p.name)}</option>`;
+        });
+        html += `</optgroup>`;
+      }
+      return html;
+    };
+    const selA = document.getElementById('compare-select-a');
+    const selB = document.getElementById('compare-select-b');
+    selA.innerHTML = buildOptions(state.compareSelA);
+    selB.innerHTML = buildOptions(state.compareSelB);
+    selA.value = state.compareSelA;
+    selB.value = state.compareSelB;
+  }
+
+  function resolveCompareSource(val) {
+    if (val === 'current') {
+      return {
+        label: '当前参数',
+        woodName: state.currentWoodName || '（未指定）',
+        planerType: state.planerType,
+        bladeAngle: state.bladeAngle,
+        cutDepth: state.cutDepth,
+        woodHardness: state.woodHardness
+      };
+    }
+    if (val.startsWith('wood:')) {
+      const id = val.slice(5);
+      const w = loadWoodLibrary().find(x => x.id === id);
+      if (!w) return null;
+      const midAngle = clamp((Number(w.angleMin) + Number(w.angleMax)) / 2,
+        PLANER_TYPES[w.planerType].min, PLANER_TYPES[w.planerType].max);
+      return {
+        label: w.name,
+        woodName: w.name,
+        planerType: w.planerType,
+        bladeAngle: midAngle,
+        cutDepth: Number(w.depth),
+        woodHardness: w.hardness
+      };
+    }
+    if (val.startsWith('preset:')) {
+      const id = val.slice(7);
+      const p = loadPresets().find(x => x.id === id);
+      if (!p) return null;
+      return {
+        label: p.name,
+        woodName: p.woodName || '（未指定）',
+        planerType: p.planerType,
+        bladeAngle: p.bladeAngle,
+        cutDepth: p.cutDepth,
+        woodHardness: p.woodHardness
+      };
+    }
+    return null;
+  }
+
+  function paramsEqual(a, b) {
+    if (!a || !b) return false;
+    return a.planerType === b.planerType &&
+      Math.abs(a.bladeAngle - b.bladeAngle) < 0.01 &&
+      Math.abs(a.cutDepth - b.cutDepth) < 0.001 &&
+      a.woodHardness === b.woodHardness;
+  }
+
+  function setCell(id, text, diff) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    if (diff) el.classList.add('diff'); else el.classList.remove('diff');
+  }
+
+  function renderCompare() {
+    refreshCompareSelects();
+    const a = resolveCompareSource(state.compareSelA);
+    const b = resolveCompareSource(state.compareSelB);
+
+    document.getElementById('cmp-head-a').textContent = '方案 A · ' + (a ? a.label : '—');
+    document.getElementById('cmp-head-b').textContent = '方案 B · ' + (b ? b.label : '—');
+
+    const noDiffEl = document.getElementById('compare-no-diff');
+    if (a && b && paramsEqual(a, b)) {
+      noDiffEl.style.display = 'block';
+    } else {
+      noDiffEl.style.display = 'none';
+    }
+
+    if (!a || !b) return;
+
+    const hdA = WOOD_HARDNESS[a.woodHardness];
+    const hdB = WOOD_HARDNESS[b.woodHardness];
+    const plA = PLANER_TYPES[a.planerType];
+    const plB = PLANER_TYPES[b.planerType];
+    const rA = computeForward(a.bladeAngle, a.cutDepth, hdA ? hdA.K : 4.5);
+    const rB = computeForward(b.bladeAngle, b.cutDepth, hdB ? hdB.K : 4.5);
+
+    setCell('cmp-a-wood', a.woodName, a.woodName !== b.woodName);
+    setCell('cmp-b-wood', b.woodName, a.woodName !== b.woodName);
+
+    setCell('cmp-a-hardness', hdA ? hdA.name : '—', a.woodHardness !== b.woodHardness);
+    setCell('cmp-b-hardness', hdB ? hdB.name : '—', a.woodHardness !== b.woodHardness);
+
+    setCell('cmp-a-planer', plA ? plA.name : '—', a.planerType !== b.planerType);
+    setCell('cmp-b-planer', plB ? plB.name : '—', a.planerType !== b.planerType);
+
+    setCell('cmp-a-angle', `${a.bladeAngle}°`, Math.abs(a.bladeAngle - b.bladeAngle) >= 0.01);
+    setCell('cmp-b-angle', `${b.bladeAngle}°`, Math.abs(a.bladeAngle - b.bladeAngle) >= 0.01);
+
+    setCell('cmp-a-depth', `${a.cutDepth} mm`, Math.abs(a.cutDepth - b.cutDepth) >= 0.001);
+    setCell('cmp-b-depth', `${b.cutDepth} mm`, Math.abs(a.cutDepth - b.cutDepth) >= 0.001);
+
+    setCell('cmp-a-chip', `${round(rA.chipMm, 3)} mm (${assessChip(rA.chipMm).label})`,
+      Math.abs(rA.chipMm - rB.chipMm) >= 0.001);
+    setCell('cmp-b-chip', `${round(rB.chipMm, 3)} mm (${assessChip(rB.chipMm).label})`,
+      Math.abs(rA.chipMm - rB.chipMm) >= 0.001);
+
+    setCell('cmp-a-force', `${round(rA.forceN, 1)} N (${assessForce(rA.forceN).label})`,
+      Math.abs(rA.forceN - rB.forceN) >= 0.1);
+    setCell('cmp-b-force', `${round(rB.forceN, 1)} N (${assessForce(rB.forceN).label})`,
+      Math.abs(rA.forceN - rB.forceN) >= 0.1);
+
+    setCell('cmp-a-ra', `${round(rA.raUm, 2)} μm (${assessRa(rA.raUm).label})`,
+      Math.abs(rA.raUm - rB.raUm) >= 0.01);
+    setCell('cmp-b-ra', `${round(rB.raUm, 2)} μm (${assessRa(rB.raUm).label})`,
+      Math.abs(rA.raUm - rB.raUm) >= 0.01);
+
+    const advA = buildAdvice(a.bladeAngle, a.cutDepth, hdA ? hdA.K : 4.5, rA.raUm, rA.forceN, a.planerType);
+    const advB = buildAdvice(b.bladeAngle, b.cutDepth, hdB ? hdB.K : 4.5, rB.raUm, rB.forceN, b.planerType);
+    document.getElementById('cmp-a-advice').innerHTML = advA.map(x => `<li>${x}</li>`).join('');
+    document.getElementById('cmp-b-advice').innerHTML = advB.map(x => `<li>${x}</li>`).join('');
   }
 
   // ==================== EXPORT ====================
   function initExport() {
     document.getElementById('btn-export').addEventListener('click', () => {
-      const list = loadPresets();
-      if (list.length === 0) {
-        alert('暂无可导出的预设。请先保存至少一组木材刨削参数。');
+      const woodList = loadWoodLibrary();
+      const presetList = loadPresets();
+      const hasData = woodList.length > 0 || presetList.length > 0;
+      if (!hasData) {
+        alert('暂无可导出的数据。请先新增木材档案或保存至少一组参数预设。');
         return;
       }
-      const rows = [['预设名称', '刨刀类型', '刃磨角度(°)', '木材名称', '硬度等级',
-                     '刨削深度(mm)', '切屑厚度(mm)', '刨削力(N)', 'Ra(μm)', '建议刃磨周期', '备注']];
-      list.forEach(p => {
-        const info = PLANER_TYPES[p.planerType];
-        const hd = WOOD_HARDNESS[p.woodHardness];
-        const r = computeForward(p.bladeAngle, p.cutDepth, hd ? hd.K : 4.5);
-        rows.push([
-          p.name,
-          info ? info.name : p.planerType,
-          p.bladeAngle,
-          p.woodName || '',
-          hd ? hd.name : '',
-          p.cutDepth,
-          round(r.chipMm, 3),
-          round(r.forceN, 1),
-          round(r.raUm, 2),
-          hd ? hd.cycle : '',
-          p.note || ''
-        ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
-      });
+
+      const rows = [];
+
+      if (state.compareOpen && state.compareSelA && state.compareSelB) {
+        const a = resolveCompareSource(state.compareSelA);
+        const b = resolveCompareSource(state.compareSelB);
+        if (a && b) {
+          rows.push(['=== 参数对比结果 ===']);
+          const noDiff = paramsEqual(a, b) ? '（两组参数无差异）' : '';
+          rows.push(['', `方案 A: ${a.label}`, `方案 B: ${b.label}`, noDiff].join(','));
+          const hdA = WOOD_HARDNESS[a.woodHardness];
+          const hdB = WOOD_HARDNESS[b.woodHardness];
+          const plA = PLANER_TYPES[a.planerType];
+          const plB = PLANER_TYPES[b.planerType];
+          const rA = computeForward(a.bladeAngle, a.cutDepth, hdA ? hdA.K : 4.5);
+          const rB = computeForward(b.bladeAngle, b.cutDepth, hdB ? hdB.K : 4.5);
+          rows.push(['项目', '方案 A', '方案 B', '差异']);
+          const addCmpRow = (label, va, vb, same) => rows.push([
+            label, va, vb, same ? '否' : '是'
+          ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+          addCmpRow('木材名称', a.woodName, b.woodName, a.woodName === b.woodName);
+          addCmpRow('硬度等级', hdA ? hdA.name : '', hdB ? hdB.name : '', a.woodHardness === b.woodHardness);
+          addCmpRow('刨刀类型', plA ? plA.name : '', plB ? plB.name : '', a.planerType === b.planerType);
+          addCmpRow('刃磨角度(°)', a.bladeAngle, b.bladeAngle, Math.abs(a.bladeAngle - b.bladeAngle) < 0.01);
+          addCmpRow('刨削深度(mm)', a.cutDepth, b.cutDepth, Math.abs(a.cutDepth - b.cutDepth) < 0.001);
+          addCmpRow('切屑厚度(mm)', round(rA.chipMm, 3), round(rB.chipMm, 3), Math.abs(rA.chipMm - rB.chipMm) < 0.001);
+          addCmpRow('刨削力(N)', round(rA.forceN, 1), round(rB.forceN, 1), Math.abs(rA.forceN - rB.forceN) < 0.1);
+          addCmpRow('理论粗糙度 Ra(μm)', round(rA.raUm, 2), round(rB.raUm, 2), Math.abs(rA.raUm - rB.raUm) < 0.01);
+          rows.push('');
+          rows.push(['=== 方案 A 加工建议 ===']);
+          buildAdvice(a.bladeAngle, a.cutDepth, hdA ? hdA.K : 4.5, rA.raUm, rA.forceN, a.planerType)
+            .forEach(adv => rows.push([`"${adv.replace(/"/g, '""')}"`].join(',')));
+          rows.push(['=== 方案 B 加工建议 ===']);
+          buildAdvice(b.bladeAngle, b.cutDepth, hdB ? hdB.K : 4.5, rB.raUm, rB.forceN, b.planerType)
+            .forEach(adv => rows.push([`"${adv.replace(/"/g, '""')}"`].join(',')));
+          rows.push('');
+        }
+      }
+
+      if (woodList.length > 0) {
+        rows.push(['=== 木材档案库 ===']);
+        rows.push(['木材名称', '硬度等级', '常用刨刀类型', '推荐角度下限(°)', '推荐角度上限(°)',
+                   '常用刨削深度(mm)', '备注'].map(v => `"${v}"`).join(','));
+        woodList.forEach(w => {
+          const hd = WOOD_HARDNESS[w.hardness];
+          const pl = PLANER_TYPES[w.planerType];
+          rows.push([
+            w.name,
+            hd ? hd.name : w.hardness,
+            pl ? pl.name : w.planerType,
+            w.angleMin,
+            w.angleMax,
+            w.depth,
+            w.note || ''
+          ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+        });
+        rows.push('');
+      }
+
+      if (presetList.length > 0) {
+        rows.push(['=== 参数预设 ===']);
+        rows.push(['预设名称', '刨刀类型', '刃磨角度(°)', '木材名称', '硬度等级',
+                   '刨削深度(mm)', '切屑厚度(mm)', '刨削力(N)', 'Ra(μm)', '建议刃磨周期', '备注']);
+        presetList.forEach(p => {
+          const info = PLANER_TYPES[p.planerType];
+          const hd = WOOD_HARDNESS[p.woodHardness];
+          const r = computeForward(p.bladeAngle, p.cutDepth, hd ? hd.K : 4.5);
+          rows.push([
+            p.name,
+            info ? info.name : p.planerType,
+            p.bladeAngle,
+            p.woodName || '',
+            hd ? hd.name : '',
+            p.cutDepth,
+            round(r.chipMm, 3),
+            round(r.forceN, 1),
+            round(r.raUm, 2),
+            hd ? hd.cycle : '',
+            p.note || ''
+          ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+        });
+      }
+
       const csv = '\uFEFF' + rows.join('\r\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
@@ -562,7 +1030,10 @@
   function initPrint() {
     document.getElementById('btn-print').addEventListener('click', () => {
       buildPrintTable();
-      setTimeout(() => window.print(), 120);
+      buildPrintWoodLibrary();
+      buildPrintCurrentWood();
+      buildPrintCompare();
+      setTimeout(() => window.print(), 200);
     });
   }
 
@@ -583,6 +1054,90 @@
       new Date().toLocaleDateString('zh-CN', { year:'numeric', month:'long', day:'numeric' });
   }
 
+  function buildPrintWoodLibrary() {
+    const tbody = document.querySelector('#wood-print-table tbody');
+    const list = loadWoodLibrary();
+    if (list.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#999;font-style:italic;">暂无木材档案</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = list.map(w => {
+      const hd = WOOD_HARDNESS[w.hardness];
+      const pl = PLANER_TYPES[w.planerType];
+      return `<tr>
+        <td>${escapeHtml(w.name)}</td>
+        <td>${hd ? hd.name : ''}</td>
+        <td>${pl ? pl.name : ''}</td>
+        <td>${w.angleMin}°–${w.angleMax}°</td>
+        <td>${w.depth}mm</td>
+        <td>${escapeHtml(w.note || '')}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function buildPrintCurrentWood() {
+    const box = document.getElementById('print-current-wood');
+    if (!state.currentWoodName) {
+      box.innerHTML = '';
+      box.className = '';
+      return;
+    }
+    const hd = WOOD_HARDNESS[state.woodHardness];
+    const pl = PLANER_TYPES[state.planerType];
+    const r = computeForward(state.bladeAngle, state.cutDepth, hd ? hd.K : 4.5);
+    box.className = 'print-current-wood';
+    box.innerHTML = `
+      <h3>当前加工木材</h3>
+      <p><strong>${escapeHtml(state.currentWoodName)}</strong>（${hd ? hd.name : ''}）</p>
+      <p>刨刀：${pl ? pl.name : ''}　角度：${state.bladeAngle}°　深度：${state.cutDepth}mm</p>
+      <p>切屑厚度：${round(r.chipMm, 3)}mm　刨削力：${round(r.forceN, 1)}N　Ra：${round(r.raUm, 2)}μm</p>
+    `;
+  }
+
+  function buildPrintCompare() {
+    const box = document.getElementById('print-compare');
+    if (!state.compareOpen) {
+      box.innerHTML = '';
+      box.className = '';
+      return;
+    }
+    const a = resolveCompareSource(state.compareSelA);
+    const b = resolveCompareSource(state.compareSelB);
+    if (!a || !b) {
+      box.innerHTML = '';
+      box.className = '';
+      return;
+    }
+    const hdA = WOOD_HARDNESS[a.woodHardness];
+    const hdB = WOOD_HARDNESS[b.woodHardness];
+    const plA = PLANER_TYPES[a.planerType];
+    const plB = PLANER_TYPES[b.planerType];
+    const rA = computeForward(a.bladeAngle, a.cutDepth, hdA ? hdA.K : 4.5);
+    const rB = computeForward(b.bladeAngle, b.cutDepth, hdB ? hdB.K : 4.5);
+    const noDiff = paramsEqual(a, b) ? '<p style="color:#E65100;font-weight:700;margin-top:8px;">⚠ 当前两组参数无差异</p>' : '';
+    box.className = 'print-compare-section';
+    box.innerHTML = `
+      <h3>参数对比结果</h3>
+      ${noDiff}
+      <div class="print-compare-grid">
+        <div class="print-compare-col">
+          <h4>方案 A · ${escapeHtml(a.label)}</h4>
+          <p>木材：${escapeHtml(a.woodName)}（${hdA ? hdA.name : ''}）</p>
+          <p>刨刀：${plA ? plA.name : ''}　角度：${a.bladeAngle}°</p>
+          <p>深度：${a.cutDepth}mm　切屑：${round(rA.chipMm, 3)}mm</p>
+          <p>刨削力：${round(rA.forceN, 1)}N　Ra：${round(rA.raUm, 2)}μm</p>
+        </div>
+        <div class="print-compare-col">
+          <h4>方案 B · ${escapeHtml(b.label)}</h4>
+          <p>木材：${escapeHtml(b.woodName)}（${hdB ? hdB.name : ''}）</p>
+          <p>刨刀：${plB ? plB.name : ''}　角度：${b.bladeAngle}°</p>
+          <p>深度：${b.cutDepth}mm　切屑：${round(rB.chipMm, 3)}mm</p>
+          <p>刨削力：${round(rB.forceN, 1)}N　Ra：${round(rB.raUm, 2)}μm</p>
+        </div>
+      </div>
+    `;
+  }
+
   // ==================== INIT ====================
   function init() {
     initPlanerTabs();
@@ -590,9 +1145,12 @@
     initHardnessSeg();
     initReverseToggle();
     initPresetModal();
+    initWoodModal();
+    initCompareToggle();
     initExport();
     initPrint();
     renderPresets();
+    renderWoodLibrary();
     updateUI();
   }
 

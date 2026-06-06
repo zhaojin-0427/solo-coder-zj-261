@@ -26,6 +26,12 @@
       </div>
     </div>
     <div class="toolbar">
+      <button class="btn btn-secondary" id="btn-compare-toggle">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M9 3v18M15 3v18M3 9h6M3 15h12M15 6h6M15 12h6"/>
+        </svg>
+        参数对比
+      </button>
       <button class="btn btn-secondary" id="btn-export">
         <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
@@ -261,12 +267,117 @@
         </dl>
       </div>
     </section>
+
+    <!-- COMPARE PANEL -->
+    <section class="panel panel-compare no-print" id="panel-compare" style="display:none;">
+      <h2 class="section-title">
+        参数并排对比
+        <button class="btn btn-small btn-ghost" id="btn-compare-close" style="float:right;">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+          关闭
+        </button>
+      </h2>
+
+      <div class="compare-header">
+        <div class="compare-col">
+          <label class="compare-label">方案 A</label>
+          <select class="compare-select" id="compare-select-a">
+            <option value="current">—— 当前参数 ——</option>
+          </select>
+        </div>
+        <div class="compare-vs">VS</div>
+        <div class="compare-col">
+          <label class="compare-label">方案 B</label>
+          <select class="compare-select" id="compare-select-b">
+            <option value="current">—— 当前参数 ——</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="compare-no-diff" id="compare-no-diff" style="display:none;">
+        ⚠ 当前两组参数无差异
+      </div>
+
+      <div class="compare-grid">
+        <div class="compare-cell compare-head"></div>
+        <div class="compare-cell compare-head" id="cmp-head-a">方案 A</div>
+        <div class="compare-cell compare-head" id="cmp-head-b">方案 B</div>
+
+        <div class="compare-cell compare-label">木材名称</div>
+        <div class="compare-cell" id="cmp-a-wood">—</div>
+        <div class="compare-cell" id="cmp-b-wood">—</div>
+
+        <div class="compare-cell compare-label">硬度等级</div>
+        <div class="compare-cell" id="cmp-a-hardness">—</div>
+        <div class="compare-cell" id="cmp-b-hardness">—</div>
+
+        <div class="compare-cell compare-label">刨刀类型</div>
+        <div class="compare-cell" id="cmp-a-planer">—</div>
+        <div class="compare-cell" id="cmp-b-planer">—</div>
+
+        <div class="compare-cell compare-label">刃磨角度</div>
+        <div class="compare-cell" id="cmp-a-angle">—</div>
+        <div class="compare-cell" id="cmp-b-angle">—</div>
+
+        <div class="compare-cell compare-label">刨削深度</div>
+        <div class="compare-cell" id="cmp-a-depth">—</div>
+        <div class="compare-cell" id="cmp-b-depth">—</div>
+
+        <div class="compare-cell compare-label cmp-divider" colspan="3">计算结果对比</div>
+
+        <div class="compare-cell compare-label">切屑厚度 h</div>
+        <div class="compare-cell" id="cmp-a-chip">—</div>
+        <div class="compare-cell" id="cmp-b-chip">—</div>
+
+        <div class="compare-cell compare-label">刨削力 F</div>
+        <div class="compare-cell" id="cmp-a-force">—</div>
+        <div class="compare-cell" id="cmp-b-force">—</div>
+
+        <div class="compare-cell compare-label">理论粗糙度 Ra</div>
+        <div class="compare-cell" id="cmp-a-ra">—</div>
+        <div class="compare-cell" id="cmp-b-ra">—</div>
+      </div>
+
+      <div class="compare-advice">
+        <div class="compare-col">
+          <h3 class="info-title">方案 A 加工建议</h3>
+          <ul id="cmp-a-advice"><li>—</li></ul>
+        </div>
+        <div class="compare-col">
+          <h3 class="info-title">方案 B 加工建议</h3>
+          <ul id="cmp-b-advice"><li>—</li></ul>
+        </div>
+      </div>
+    </section>
   </main>
+
+  <!-- WOOD LIBRARY PANEL -->
+  <section class="wood-library no-print">
+    <div class="wood-lib-header">
+      <h2 class="card-title">木材档案库</h2>
+      <button class="btn btn-small btn-primary" id="btn-add-wood">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        新增木材档案
+      </button>
+    </div>
+    <div class="wood-lib-scroll" id="wood-lib-scroll">
+      <p class="preset-empty">暂无木材档案，点击右上角新增。</p>
+    </div>
+  </section>
 
   <!-- PRINT: Reference Card -->
   <section class="print-only print-card" id="print-card">
     <h1>木工刨刀角度对照卡</h1>
     <p class="print-sub">Planer Blade Angle Reference Card</p>
+
+    <div id="print-current-wood"></div>
+    <div id="print-compare"></div>
+
+    <h2 class="print-h2">推荐角度对照表</h2>
     <table class="angle-table" id="angle-table">
       <thead>
         <tr>
@@ -280,6 +391,22 @@
       </thead>
       <tbody></tbody>
     </table>
+
+    <h2 class="print-h2">木材档案库</h2>
+    <table class="angle-table" id="wood-print-table">
+      <thead>
+        <tr>
+          <th>木材名称</th>
+          <th>硬度</th>
+          <th>常用刨刀</th>
+          <th>推荐角度</th>
+          <th>刨削深度</th>
+          <th>备注</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
     <div class="print-footer">
       <p>※ 以上为推荐起始角度，实际操作请根据木材含水率、刀具锋利度微调 ±3°。</p>
       <p>打印日期：<span id="print-date"></span></p>
@@ -305,6 +432,59 @@
       <div class="modal-actions">
         <button class="btn btn-ghost" id="modal-cancel">取消</button>
         <button class="btn btn-primary" id="modal-confirm">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Wood Archive Modal -->
+  <div class="modal-overlay no-print" id="wood-modal-overlay" style="display:none;">
+    <div class="modal modal-wide">
+      <h3 id="wood-modal-title">新增木材档案</h3>
+      <input type="hidden" id="wood-edit-id" value="" />
+      <div class="modal-row">
+        <label>木材名称 *</label>
+        <input type="text" id="wood-name" placeholder="例如：北美黑胡桃木" />
+      </div>
+      <div class="modal-row">
+        <label>硬度等级</label>
+        <select id="wood-hardness">
+          <option value="soft">软木（松木、杨木、杉木）</option>
+          <option value="medium">中硬木（橡木、榉木、樱桃木）</option>
+          <option value="hard">硬木（水曲柳、胡桃木）</option>
+          <option value="extra">极硬木（紫檀、酸枝、黄花梨）</option>
+        </select>
+      </div>
+      <div class="modal-row">
+        <label>常用刨刀类型</label>
+        <select id="wood-planer">
+          <option value="flat">平刨</option>
+          <option value="pressure">压刨</option>
+          <option value="groove">槽刨</option>
+          <option value="edge">边刨</option>
+          <option value="bird">鸟刨</option>
+        </select>
+      </div>
+      <div class="modal-row modal-row-2col">
+        <div>
+          <label>推荐角度下限 (°)</label>
+          <input type="number" id="wood-angle-min" min="15" max="60" step="0.5" value="25" />
+        </div>
+        <div>
+          <label>推荐角度上限 (°)</label>
+          <input type="number" id="wood-angle-max" min="15" max="60" step="0.5" value="35" />
+        </div>
+      </div>
+      <div class="modal-row">
+        <label>常用刨削深度 (mm)</label>
+        <input type="number" id="wood-depth" min="0.1" max="5" step="0.1" value="0.8" />
+      </div>
+      <div class="modal-row">
+        <label>备注</label>
+        <textarea id="wood-note" rows="2" placeholder="纹理特点、加工注意事项..."></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="wood-modal-cancel">取消</button>
+        <button class="btn btn-primary" id="wood-modal-confirm">保存档案</button>
       </div>
     </div>
   </div>
