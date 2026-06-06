@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>木工刨刀角度与切削深度计算器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Playfair+Display:wght@600;700;900&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar no-print">
+    <div class="brand">
+      <svg class="brand-logo" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M6 32 L20 12 L36 28 L42 32 Z" stroke="#B8860B" stroke-width="2" fill="#5D4037" fill-opacity="0.35"/>
+        <path d="M20 12 L36 28 L26 36 Z" stroke="#B8860B" stroke-width="1.5" fill="#B8860B" fill-opacity="0.6"/>
+        <line x1="6" y1="32" x2="42" y2="32" stroke="#37474F" stroke-width="2"/>
+      </svg>
+      <div class="brand-text">
+        <h1>木工刨刀角度计算器</h1>
+        <p>Planer Blade Angle &amp; Cut Depth Calculator</p>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button class="btn btn-secondary" id="btn-export">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+        </svg>
+        导出维护清单
+      </button>
+      <button class="btn btn-secondary" id="btn-print">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z"/>
+        </svg>
+        打印角度对照卡
+      </button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <!-- LEFT: Parameters -->
+    <section class="panel panel-params no-print">
+      <div class="card card-planer">
+        <h2 class="card-title">刨刀类型</h2>
+        <div class="planer-tabs" id="planer-tabs">
+          <button class="planer-tab active" data-type="flat">平刨</button>
+          <button class="planer-tab" data-type="pressure">压刨</button>
+          <button class="planer-tab" data-type="groove">槽刨</button>
+          <button class="planer-tab" data-type="edge">边刨</button>
+          <button class="planer-tab" data-type="bird">鸟刨</button>
+        </div>
+        <p class="planer-desc" id="planer-desc">平面精加工 · 推荐角度 25°–35°</p>
+      </div>
+
+      <div class="card card-angle">
+        <h2 class="card-title">刀刃角度 <span class="card-subtitle" id="angle-range-tag">25° – 35°</span></h2>
+        <div class="angle-display">
+          <span class="angle-value" id="angle-value">30</span><span class="angle-unit">°</span>
+        </div>
+        <div class="slider-wrap">
+          <input type="range" id="angle-slider" min="15" max="60" step="0.5" value="30" />
+          <div class="slider-ticks">
+            <span>15°</span><span>25°</span><span>35°</span><span>45°</span><span>60°</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card card-depth">
+        <h2 class="card-title">刨削深度</h2>
+        <div class="number-input">
+          <button class="num-btn" id="depth-minus">−</button>
+          <input type="number" id="depth-input" min="0.1" max="5" step="0.1" value="0.8" />
+          <span class="num-unit">mm</span>
+          <button class="num-btn" id="depth-plus">+</button>
+        </div>
+        <input type="range" id="depth-slider" min="0.1" max="5" step="0.1" value="0.8" class="thin-slider" />
+      </div>
+
+      <div class="card card-hardness">
+        <h2 class="card-title">木材硬度</h2>
+        <div class="hardness-seg" id="hardness-seg">
+          <button class="seg-btn active" data-hardness="soft">
+            <span class="seg-label">软木</span>
+            <span class="seg-sub">松木 · 杨木</span>
+          </button>
+          <button class="seg-btn" data-hardness="medium">
+            <span class="seg-label">中硬</span>
+            <span class="seg-sub">橡木 · 榉木</span>
+          </button>
+          <button class="seg-btn" data-hardness="hard">
+            <span class="seg-label">硬木</span>
+            <span class="seg-sub">胡桃 · 水曲</span>
+          </button>
+          <button class="seg-btn" data-hardness="extra">
+            <span class="seg-label">极硬</span>
+            <span class="seg-sub">紫檀 · 酸枝</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="card card-reverse">
+        <div class="reverse-header">
+          <h2 class="card-title">反向计算</h2>
+          <label class="switch">
+            <input type="checkbox" id="reverse-toggle" />
+            <span class="switch-track"></span>
+          </label>
+        </div>
+        <div class="reverse-body" id="reverse-body" style="display:none;">
+          <p class="hint">输入期望表面粗糙度，系统自动推荐最佳刀刃角度区间。</p>
+          <div class="row">
+            <label>期望 Ra (μm)</label>
+            <input type="number" id="target-ra" min="0.5" max="200" step="0.5" value="3.2" />
+          </div>
+          <div class="recommend-box" id="recommend-box">
+            —
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MIDDLE: SVG Diagram -->
+    <section class="panel panel-diagram">
+      <div class="diagram-card">
+        <div class="diagram-header no-print">
+          <h2 class="card-title">刨刀切削截面</h2>
+          <span class="diagram-hint">几何模型实时示意</span>
+        </div>
+        <div class="svg-stage">
+          <svg id="planer-svg" viewBox="0 0 600 380" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <pattern id="woodPattern" x="0" y="0" width="24" height="8" patternUnits="userSpaceOnUse">
+                <rect width="24" height="8" fill="#8B6F47"/>
+                <path d="M0 4 Q6 1 12 4 T24 4" stroke="#6B5336" stroke-width="0.8" fill="none" opacity="0.7"/>
+              </pattern>
+              <linearGradient id="bladeGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#E8D5A8"/>
+                <stop offset="50%" stop-color="#C9A84C"/>
+                <stop offset="100%" stop-color="#8B6914"/>
+              </linearGradient>
+            </defs>
+
+            <!-- Wood block -->
+            <rect id="wood-block" x="0" y="230" width="600" height="150" fill="url(#woodPattern)"/>
+            <line x1="0" y1="230" x2="600" y2="230" stroke="#3E2C1C" stroke-width="1.5"/>
+
+            <!-- Depth indicator -->
+            <line id="depth-line-top" x1="80" y1="230" x2="80" y2="230" stroke="#FF6B35" stroke-width="1.5" stroke-dasharray="4 3"/>
+            <line id="depth-line-bot" x1="80" y1="230" x2="80" y2="230" stroke="#FF6B35" stroke-width="1.5" stroke-dasharray="4 3"/>
+            <text id="depth-label" x="54" y="245" fill="#FF6B35" font-size="13" font-family="Noto Serif SC, serif" font-weight="600">d</text>
+
+            <!-- Blade body (dynamic) -->
+            <g id="blade-group">
+              <polygon id="blade-polygon" points="" fill="url(#bladeGrad)" stroke="#5D4037" stroke-width="1.5"/>
+              <polygon id="blade-edge" points="" fill="#FFF3D0" stroke="#8B6914" stroke-width="1"/>
+            </g>
+
+            <!-- Angle arc -->
+            <path id="angle-arc" d="" fill="none" stroke="#B8860B" stroke-width="1.8"/>
+            <text id="angle-label" x="220" y="218" fill="#B8860B" font-size="14" font-family="Playfair Display, serif" font-weight="700">α</text>
+
+            <!-- Chip thickness -->
+            <line id="chip-line" x1="" y1="" x2="" y2="" stroke="#4CAF50" stroke-width="2"/>
+            <text id="chip-label" x="" y="" fill="#4CAF50" font-size="13" font-family="Noto Serif SC, serif" font-weight="600">h</text>
+
+            <!-- Reference lines -->
+            <line x1="180" y1="230" x2="580" y2="230" stroke="#666" stroke-width="1" stroke-dasharray="2 4" opacity="0.6"/>
+
+            <!-- Title annotation -->
+            <text x="300" y="30" text-anchor="middle" fill="#E8D5A8" font-size="16" font-family="Noto Serif SC, serif" font-weight="600" opacity="0.7">切削几何模型</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- PRESETS -->
+      <div class="preset-section no-print">
+        <div class="preset-header">
+          <h2 class="card-title">木材参数预设</h2>
+          <button class="btn btn-small btn-primary" id="btn-save-preset">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+            保存当前参数
+          </button>
+        </div>
+        <div class="preset-scroll" id="preset-scroll">
+          <p class="preset-empty" id="preset-empty">暂无预设，点击右上角保存当前刨削参数。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT: Results -->
+    <section class="panel panel-results no-print">
+      <h2 class="section-title">切削参数计算结果</h2>
+
+      <div class="result-card result-chip">
+        <div class="result-icon chip-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 6h16M4 12h10M4 18h16"/>
+          </svg>
+        </div>
+        <div class="result-info">
+          <p class="result-label">切屑厚度 h</p>
+          <p class="result-value"><span id="val-chip">—</span><span class="result-unit">mm</span></p>
+        </div>
+        <div class="quality-bar">
+          <div class="bar-fill bar-chip" id="bar-chip"></div>
+          <span class="quality-tag" id="tag-chip">—</span>
+        </div>
+      </div>
+
+      <div class="result-card result-force">
+        <div class="result-icon force-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+          </svg>
+        </div>
+        <div class="result-info">
+          <p class="result-label">刨削力 F</p>
+          <p class="result-value"><span id="val-force">—</span><span class="result-unit">N</span></p>
+        </div>
+        <div class="quality-bar">
+          <div class="bar-fill bar-force" id="bar-force"></div>
+          <span class="quality-tag" id="tag-force">—</span>
+        </div>
+      </div>
+
+      <div class="result-card result-roughness">
+        <div class="result-icon rough-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12h2l2-5 3 10 3-7 2 4 2-2h4"/>
+          </svg>
+        </div>
+        <div class="result-info">
+          <p class="result-label">理论粗糙度 Ra</p>
+          <p class="result-value"><span id="val-ra">—</span><span class="result-unit">μm</span></p>
+        </div>
+        <div class="quality-bar">
+          <div class="bar-fill bar-ra" id="bar-ra"></div>
+          <span class="quality-tag" id="tag-ra">—</span>
+        </div>
+      </div>
+
+      <div class="info-box">
+        <h3 class="info-title">加工建议</h3>
+        <ul id="advice-list">
+          <li>—</li>
+        </ul>
+      </div>
+
+      <div class="info-box">
+        <h3 class="info-title">计算依据</h3>
+        <dl class="formula-list">
+          <dt>切屑厚度</dt><dd>h = d · sin(α)</dd>
+          <dt>刨削力</dt><dd>F = K · h · b / sin(α)</dd>
+          <dt>粗糙度</dt><dd>Ra = d / (8 · tan(α))</dd>
+        </dl>
+      </div>
+    </section>
+  </main>
+
+  <!-- PRINT: Reference Card -->
+  <section class="print-only print-card" id="print-card">
+    <h1>木工刨刀角度对照卡</h1>
+    <p class="print-sub">Planer Blade Angle Reference Card</p>
+    <table class="angle-table" id="angle-table">
+      <thead>
+        <tr>
+          <th>木材 / 硬度</th>
+          <th>平刨</th>
+          <th>压刨</th>
+          <th>槽刨</th>
+          <th>边刨</th>
+          <th>鸟刨</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div class="print-footer">
+      <p>※ 以上为推荐起始角度，实际操作请根据木材含水率、刀具锋利度微调 ±3°。</p>
+      <p>打印日期：<span id="print-date"></span></p>
+    </div>
+  </section>
+
+  <!-- Save Preset Modal -->
+  <div class="modal-overlay no-print" id="modal-overlay" style="display:none;">
+    <div class="modal">
+      <h3>保存木材参数预设</h3>
+      <div class="modal-row">
+        <label>预设名称</label>
+        <input type="text" id="preset-name" placeholder="例如：红橡木桌面精刨" />
+      </div>
+      <div class="modal-row">
+        <label>木材名称</label>
+        <input type="text" id="preset-wood" placeholder="例如：红橡木" />
+      </div>
+      <div class="modal-row">
+        <label>备注（可选）</label>
+        <textarea id="preset-note" rows="2" placeholder="加工用途、特殊说明..."></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="modal-cancel">取消</button>
+        <button class="btn btn-primary" id="modal-confirm">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
