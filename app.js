@@ -100,8 +100,12 @@
     const tanA = depthMm / (8 * targetRaMm);
     let minAngle = rad2deg(Math.atan(tanA));
     minAngle = clamp(minAngle, 15, 60);
-    const lo = clamp(Math.max(minAngle, info.min), 15, 60);
-    const hi = clamp(Math.min(lo + 6, info.max), 15, 60);
+    let lo = clamp(Math.max(minAngle, info.min), 15, 60);
+    let hi = clamp(Math.min(lo + 6, info.max), 15, 60);
+    if (lo > hi) {
+      lo = info.min;
+      hi = info.max;
+    }
     const rec = round((lo + hi) / 2, 1);
     return {
       minAngle: round(minAngle, 1),
